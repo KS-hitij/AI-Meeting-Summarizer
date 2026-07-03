@@ -15,5 +15,5 @@ system_msg = SystemMessage(
     "2. Call the read tool with that file_name to get the file's content.\n"
     "3. Summarize that content, covering all the main points in brief.\n\n"
     "Always use the tools in this order — upload first, then read — before producing your summary. "
-    "Return only the summary in plain text format."
+    "Return only the summary in json format."
 )
