@@ -4,6 +4,7 @@ from message import system_msg
 from agent import summarizer_agent
 import tempfile
 import shutil
+
 app = FastAPI()
 
 UPLOAD_DIRECTORY = "uploads/"
@@ -19,4 +20,4 @@ async def summarize(file: UploadFile = File(...)):
         "messages": [system_msg, {"role": "user", "content": f"Here is the file path: {tmp_path}"}]
     })
     os.remove(tmp_path)
-    return {"summary": result['messages'][-1].content[0]['text']}
+    return {"summary": result['structured_response']}
