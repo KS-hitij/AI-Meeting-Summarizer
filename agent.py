@@ -1,9 +1,14 @@
 from langchain.agents import create_agent
+from pydantic import BaseModel
+from dotenv import load_dotenv
 import os
 import shutil
 
+load_dotenv()
+
 UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+api_key = os.getenv("GOOGLE_API_KEY")
 
 def upload(file:str)->str:
     """Upload a file to the server and return its name.
@@ -31,7 +36,13 @@ def read(file_name:str)->str:
         content = file.read()
     return content
 
-class Answer():
-    summary:str
+class ActionItem(BaseModel):
+    owner:str
+    task:str
 
-summarizer_agent = create_agent(model="google_genai:gemini-3.1-flash-lite",tools=[upload,read])
+class Answer(BaseModel):
+    title:str
+    summary:str
+    action_items:list[ActionItem]
+
+summarizer_agent = create_agent(model="google_genai:gemini-3.1-flash-lite",tools=[upload,read],response_format=Answer)
