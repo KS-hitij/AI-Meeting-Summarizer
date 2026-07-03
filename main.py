@@ -9,10 +9,6 @@ app = FastAPI()
 UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 
-@app.get("/")
-async def read_root():
-    return {"Hello": "World"}
-
 @app.post("/summarize")
 async def summarize(file: UploadFile = File(...)):
     suffix = os.path.splitext(file.filename)[1]
