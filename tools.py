@@ -1,6 +1,8 @@
-from langchain.agents import create_agent
+from langchain.tools import tool
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from typing import Optional
+from langchain.chat_models import init_chat_model
 import os
 import shutil
 import whisper
@@ -11,6 +13,11 @@ UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 api_key = os.getenv("GOOGLE_API_KEY")
 
+model = init_chat_model(
+    "gemini-3.1-flash-lite",
+)
+
+@tool
 def upload(file:str)->str:
     """Upload a file to the server and return its name.
     Args:
@@ -22,7 +29,7 @@ def upload(file:str)->str:
     shutil.copy(file, destination)
     return {"file_name": file_name}
 
-
+@tool
 def read(file_name:str)->str:
     """Read the content of a file given its name.
     Args:
@@ -37,6 +44,7 @@ def read(file_name:str)->str:
         content = file.read()
     return content
 
+@tool
 def trancribe(audio)->str:
     """Given the audio file transcribe it and return the transcription.
     Args:
@@ -57,10 +65,19 @@ class OpenQuestion(BaseModel):
     question:str
     asked_by:str
 
+class Risk(BaseModel):
+    risk:str
+
 class Answer(BaseModel):
     title:str
     summary:str
     action_items:list[ActionItem]
     open_questions:list[OpenQuestion]
+    risks: Optional[Risk]
 
-summarizer_agent = create_agent(model="google_genai:gemini-3.1-flash-lite",tools=[upload,read],response_format=Answer)
+
+
+tools =[upload,read,trancribe]
+tools_by_name={tool.name: tool for tool in tools}
+
+model_with_tools = model.bind_tools(tools)
