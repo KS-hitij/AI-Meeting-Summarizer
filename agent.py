@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 import shutil
+import whisper
 
 load_dotenv()
 
@@ -35,6 +36,18 @@ def read(file_name:str)->str:
     with open(file_path, "r") as file:
         content = file.read()
     return content
+
+def trancribe(audio)->str:
+    """Given the audio file transcribe it and return the transcription.
+    Args:
+        audio (): The audio file that needs to be transcribed
+    Returns: 
+        transcription (str): The transcription of the audio file"""
+    model = whisper.load_model('turbo')
+    result = model.transcribe(audio)
+    transcription = result["text"]
+    return transcription
+
 
 class ActionItem(BaseModel):
     owner:str
