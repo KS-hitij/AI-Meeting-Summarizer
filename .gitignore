@@ -92,3 +92,5 @@ Thumbs.db
 # --- Misc ---
 *.bak
 .cache/
+download.mp3
+test_whisper.py

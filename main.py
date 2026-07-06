@@ -5,6 +5,7 @@ from agent import summarizer_agent
 import tempfile
 import shutil
 import redis
+from tasks import summarize_file
 
 
 app = FastAPI()
@@ -19,8 +20,5 @@ async def summarize(file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
-    result = summarizer_agent.invoke({
-        "messages": [system_msg, {"role": "user", "content": f"Here is the file path: {tmp_path}"}]
-    })
-    os.remove(tmp_path)
-    return {"summary": result['structured_response']}
+    task = summarize_file.delay(tmp_path)
+    return {"task_id:",task.id}
