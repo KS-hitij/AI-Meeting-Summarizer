@@ -53,9 +53,14 @@ class ActionItem(BaseModel):
     owner:str
     task:str
 
+class OpenQuestion(BaseModel):
+    question:str
+    asked_by:str
+
 class Answer(BaseModel):
     title:str
     summary:str
     action_items:list[ActionItem]
+    open_questions:list[OpenQuestion]
 
 summarizer_agent = create_agent(model="google_genai:gemini-3.1-flash-lite",tools=[upload,read],response_format=Answer)
