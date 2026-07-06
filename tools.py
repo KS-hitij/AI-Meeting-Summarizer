@@ -45,7 +45,7 @@ def read(file_name:str)->str:
     return content
 
 @tool
-def trancribe(audio)->str:
+def transcribe(audio)->str:
     """Given the audio file transcribe it and return the transcription.
     Args:
         audio (): The audio file that needs to be transcribed
@@ -77,7 +77,7 @@ class Answer(BaseModel):
 
 
 
-tools =[upload,read,trancribe]
+tools =[upload,read,transcribe]
 tools_by_name={tool.name: tool for tool in tools}
 
 model = model.bind_tools(tools)
