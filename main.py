@@ -22,3 +22,13 @@ async def summarize(file: UploadFile = File(...)):
         tmp_path = tmp.name
     task = summarize_file.delay(tmp_path)
     return {"task_id:",task.id}
+
+
+@app.get('/tasks/{task_id}')
+def get_task_status(task_id:str):
+    async_result = summarize_file.AsyncResult(task_id)
+    return{
+        "task_id":task_id,
+        "status":async_result.status,
+        "result":async_result.result if async_result.ready() else None
+    }
