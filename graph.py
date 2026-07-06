@@ -1,5 +1,7 @@
 from langgraph.graph import StateGraph
 from typing import TypedDict,Optional
+from langchain.messages import SystemMessage
+from tools import model
 
 class File(TypedDict):
     file_name:str
@@ -15,4 +17,4 @@ class AgentState(TypedDict):
 
 graph = StateGraph(AgentState)
 
-graph.add_node()
+

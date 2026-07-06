@@ -80,4 +80,4 @@ class Answer(BaseModel):
 tools =[upload,read,trancribe]
 tools_by_name={tool.name: tool for tool in tools}
 
-model_with_tools = model.bind_tools(tools)
+model = model.bind_tools(tools)
