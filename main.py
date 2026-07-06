@@ -4,8 +4,11 @@ from message import system_msg
 from agent import summarizer_agent
 import tempfile
 import shutil
+import redis
+
 
 app = FastAPI()
+r = redis.Redis(host="localhost",port=6379,db=0,decode_responses=True)
 
 UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
