@@ -45,14 +45,14 @@ def read(file_name:str)->str:
     return content
 
 @tool
-def transcribe(audio)->str:
-    """Given the audio file transcribe it and return the transcription.
+def transcribe(file_path:str)->str:
+    """Given the audio file path fetch it and transcribe it and return the transcription.
     Args:
-        audio (): The audio file that needs to be transcribed
+        file_path (str): The audio file path that needs to be transcribed
     Returns: 
         transcription (str): The transcription of the audio file"""
     model = whisper.load_model('turbo')
-    result = model.transcribe(audio)
+    result = model.transcribe(file_path)
     transcription = result["text"]
     return transcription
 
