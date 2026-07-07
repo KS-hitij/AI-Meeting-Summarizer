@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 from typing import Optional
 from langchain.chat_models import init_chat_model
 import os
-import shutil
 import whisper
 
 load_dotenv()
