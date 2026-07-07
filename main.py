@@ -1,15 +1,24 @@
 from fastapi import FastAPI, UploadFile, File
 import os
-from message import system_msg
-from agent import summarizer_agent
 import tempfile
 import shutil
 import redis
 from tasks import summarize_file
 
 
+REDIS_HOST = os.getenv('REDIS_HOST')
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
+REDIS_USERNAME= os.getenv('REDIS_USERNAME')
+REDIS_PORT= os.getenv('REDIS_PORT')
+
 app = FastAPI()
-r = redis.Redis(host="localhost",port=6379,db=0,decode_responses=True)
+r = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    decode_responses=True,
+    username=REDIS_USERNAME,
+    password=REDIS_PASSWORD
+)
 
 UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
@@ -20,8 +29,8 @@ async def summarize(file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
-    task = summarize_file.delay(tmp_path)
-    return {"task_id:",task.id}
+    task = summarize_file.delay(tmp_path,file.filename)
+    return {"task_id":task.id}
 
 
 @app.get('/tasks/{task_id}')

@@ -1,7 +1,9 @@
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, START, END
 from typing import TypedDict,Optional
-from langchain.messages import SystemMessage
-from tools import model,transcribe
+from langchain.messages import HumanMessage
+from tools import model,transcribe, model_with_structured_output
+from message import system_msg
+import os
 
 class File(TypedDict):
     file_name:str
@@ -36,7 +38,7 @@ def decide_text_or_audio(state:AgentState):
 
 
 
-def transcribe_node(state:AgentState):
+def transcribe_node(state:AgentState)->AgentState:
     """Performs transcription of the audio file using the transcribe tool."""
     if not state.get('file'):
         raise ValueError("No file found in agent state. Expected an audio file entry.")
@@ -53,3 +55,33 @@ def transcribe_node(state:AgentState):
     state['response'] = transcription
     return state
 
+def summarize_node(state:AgentState):
+    """Using the transcription provided from the user, generate a summary of the meeting"""
+    file_path = state['file']["file_path"]
+    if not os.path.exists(file_path):
+        return {"error": "File not found"}
+    
+    with open(file_path, "r") as file:
+        content = file.read()
+    transcription = content
+    prompt = f"Here is the transcription of the meeting:\n{transcription}"
+    response = model_with_structured_output.invoke([system_msg,HumanMessage(content=prompt)])
+    state['response'] = response
+    return state
+
+
+graph.add_node("transcribe",transcribe_node)
+graph.add_node("summarize",summarize_node)
+
+graph.add_edge("transcribe","summarize")
+graph.add_edge("summarize",END)
+graph.add_conditional_edges(
+    START,
+    decide_text_or_audio,
+    {
+        "transcribe":"transcribe",
+        "summarize":"summarize"
+    }
+)
+
+agent = graph.compile()
