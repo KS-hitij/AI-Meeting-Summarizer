@@ -31,8 +31,10 @@ async def summarize(file: UploadFile = File(...)):
         tmp_path = tmp.name
     if file.content_type == 'audio/mpeg' or file.content_type=='audio/wav' or file.content_type== 'audio/mp4':
         file_type = "audio"
-    else:
+    elif file.content_type == 'text/plain':
         file_type = "text"
+    else:
+        raise ValueError('Wrong type of file passed only text and audio allowed')
     task = summarize_file.delay(tmp_path,file.filename,file_type)
     return {"task_id":task.id}
 
