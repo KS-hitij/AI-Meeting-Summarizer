@@ -36,8 +36,6 @@ def decide_text_or_audio(state:AgentState):
             "Expected 'audio' or 'text'."
         )
 
-
-
 def transcribe_node(state:AgentState)->AgentState:
     """Performs transcription of the audio file using the transcribe tool."""
     if not state.get('file'):
