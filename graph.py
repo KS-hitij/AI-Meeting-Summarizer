@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict,Optional
 from langchain.messages import HumanMessage
-from tools import model,transcribe, model_with_structured_output
+from tools import transcribe, model_with_structured_output
 from message import system_msg
 import os
 
