@@ -57,13 +57,16 @@ def transcribe_node(state:AgentState)->AgentState:
 
 def summarize_node(state:AgentState):
     """Using the transcription provided from the user, generate a summary of the meeting"""
-    file_path = state['file']["file_path"]
-    if not os.path.exists(file_path):
-        return {"error": "File not found"}
-    
-    with open(file_path, "r") as file:
-        content = file.read()
-    transcription = content
+    if state["file"]["file_type"] == 'text':
+        file_path = state['file']["file_path"]
+        if not os.path.exists(file_path):
+            return {"error": "File not found"}
+        
+        with open(file_path, "r") as file:
+            content = file.read()
+        transcription = content
+    else:
+        transcription = state['response']
     prompt = f"Here is the transcription of the meeting:\n{transcription}"
     response = model_with_structured_output.invoke([system_msg,HumanMessage(content=prompt)])
     state['response'] = response

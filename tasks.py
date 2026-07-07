@@ -1,4 +1,3 @@
-from message import system_msg
 import os
 from celery import Celery
 from graph import agent
@@ -12,12 +11,12 @@ celery = Celery(
 )
 
 @celery.task(bind=True)
-def summarize_file(self,tmp_path:str,file_name:str):
+def summarize_file(self,tmp_path:str,file_name:str,file_type:str):
     result = agent.invoke({
         "file":{
             "file_name":file_name,
             "file_path":tmp_path,
-            "file_type":"text"
+            "file_type":file_type
         }
     })
     try:

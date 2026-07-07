@@ -29,7 +29,11 @@ async def summarize(file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
-    task = summarize_file.delay(tmp_path,file.filename)
+    if file.content_type == 'audio/mpeg' or file.content_type=='audio/wav' or file.content_type== 'audio/mp4':
+        file_type = "audio"
+    else:
+        file_type = "text"
+    task = summarize_file.delay(tmp_path,file.filename,file_type)
     return {"task_id":task.id}
 
 
