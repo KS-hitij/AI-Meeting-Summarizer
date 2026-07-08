@@ -4,3 +4,4 @@ redis
 git+https://github.com/openai/whisper.git 
 Celery
 langgraph
+chromadb

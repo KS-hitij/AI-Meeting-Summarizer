@@ -1,5 +1,4 @@
 import chromadb
-import chromadb.utils.embedding_functions as embedding_functions
 from google import genai
 from google.genai import types
 from tools import Answer

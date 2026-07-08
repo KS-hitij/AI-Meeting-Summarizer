@@ -3,6 +3,7 @@ from typing import TypedDict,Optional
 from langchain.messages import HumanMessage
 from tools import transcribe, model_with_structured_output
 from message import system_msg
+from vectordb import build_documents,store
 import os
 
 class File(TypedDict):
@@ -15,6 +16,7 @@ class AgentState(TypedDict):
     response:str
     query:str
     llm_calls:int
+    meeting_id:str
 
 
 graph = StateGraph(AgentState)
@@ -67,15 +69,22 @@ def summarize_node(state:AgentState):
         transcription = state['response']
     prompt = f"Here is the transcription of the meeting:\n{transcription}"
     response = model_with_structured_output.invoke([system_msg,HumanMessage(content=prompt)])
-    state['response'] = response
+    state['response'] = response.result
     return state
 
+def store_in_vector_db(state:AgentState):
+    """Store the summarized details of the meeting in vector db"""
+    docs = build_documents(state["response"],"123","08-07-2026")
+    store(docs)
+    return state
 
 graph.add_node("transcribe",transcribe_node)
 graph.add_node("summarize",summarize_node)
+graph.add_node("store_in_vector_db",store_in_vector_db)
 
 graph.add_edge("transcribe","summarize")
-graph.add_edge("summarize",END)
+graph.add_edge("summarize","store_in_vector_db")
+graph.add_edge("store_in_vector_db",END)
 graph.add_conditional_edges(
     START,
     decide_text_or_audio,
