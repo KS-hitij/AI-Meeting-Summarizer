@@ -94,3 +94,5 @@ Thumbs.db
 .cache/
 download.mp3
 test_whisper.py
+
+chroma/
