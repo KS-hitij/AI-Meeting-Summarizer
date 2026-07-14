@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Optional
 from langchain.chat_models import init_chat_model
+from vectordb import emb_client, collection
 import os
 import whisper
 
@@ -40,7 +41,7 @@ class OpenQuestion(BaseModel):
 class Risk(BaseModel):
     risk:str
 
-class Answer(BaseModel):
+class Summarizing_Answer(BaseModel):
     title:str
     summary:str
     action_items:list[ActionItem]
@@ -48,9 +49,85 @@ class Answer(BaseModel):
     risks: Optional[Risk]
 
 
+summarizing_model_with_structured_output = model.with_structured_output(Summarizing_Answer)
 
-tools =[transcribe]
-tools_by_name={tool.name: tool for tool in tools}
 
-model = model.bind_tools(tools)
-model_with_structured_output = model.with_structured_output(Answer)
+
+# tools for rag agent 
+
+# function for flattening the briefs of the meeting
+def build_documents(answer: Summarizing_Answer, meeting_id: str, date: str) -> list[dict]:
+    docs = []
+    
+    # Summary level doc
+    docs.append({
+        "text": f"Meeting: {answer.title}\nSummary: {answer.summary}",
+        "metadata": {"meeting_id": meeting_id, "date": date, "type": "summary"}
+    })
+    
+    # One doc per action item
+    for item in answer.action_items:
+        docs.append({
+            "text": f"Action item from meeting '{answer.title}' ({date}): {item.description}",
+            "metadata": {"meeting_id": meeting_id, "date": date, "type": "action_item"}
+        })
+    
+    # One doc per open question
+    for q in answer.open_questions:
+        docs.append({
+            "text": f"Open question from meeting '{answer.title}' ({date}): {q.question}",
+            "metadata": {"meeting_id": meeting_id, "date": date, "type": "open_question"}
+        })
+    
+    # Risk doc
+    if answer.risks:
+        docs.append({
+            "text": f"Risk noted in meeting '{answer.title}' ({date}): {answer.risks}",
+            "metadata": {"meeting_id": meeting_id, "date": date, "type": "risk"}
+        })
+    return docs
+
+#function for embedding summary, action items, risks and open questions of a meeting 
+def embed_doc(docs:list[dict]):
+    texts = [d["text"] for d in docs]
+    result = emb_client.models.embed_content(
+        model="gemini-embedding-2-preview",
+        contents=texts,
+        config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT")
+    )
+    for doc, embedding in zip(docs, result.embeddings):
+        doc["embedding"] = embedding.values
+    
+    return docs
+
+#function to store the document in chroma db
+def store(docs:list[dict]):
+    docs = embed_doc(docs)
+    collection.add(
+        ids=[d['id'] for d in docs],
+        documents=[d['text'] for d in docs],
+        embeddings=[d['embeddings'] for d in docs],
+        metadatas=[d['metadata'] for d in docs]
+    )
+
+#function to embed user query
+def embed_query(query:str):
+    result = emb_client.models.embed_content(
+        model="gemini-embedding-2-preview",
+        contents=query,
+        config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY")
+    )
+    return result
+
+
+#function to search for data related to user's query
+def search(query:str):
+    result = embed_query(query)
+    result = collection.query(query_embeddings=result)
+    data = result["documents"]
+    return data
+
+class Rag_Answer(BaseModel):
+    response:str
+
+rag_model_with_structured_output = model.with_structured_output(Rag_Answer)

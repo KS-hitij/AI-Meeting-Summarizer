@@ -3,7 +3,7 @@ import os
 import tempfile
 import shutil
 import redis
-from tasks import summarize_file
+from tasks import summarize_file, rag_query
 
 
 REDIS_HOST = os.getenv('REDIS_HOST')
@@ -47,3 +47,8 @@ def get_task_status(task_id:str):
         "status":async_result.status,
         "result":async_result.result if async_result.ready() else None
     }
+
+@app.post("/rag_query")
+def rag_query(query: str):
+    task  = rag_query.delay(query)
+    return {"task_id":task.id}
