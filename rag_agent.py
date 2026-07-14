@@ -3,7 +3,6 @@ from typing import TypedDict
 from langchain.messages import AnyMessage
 from tools import rag_model_with_structured_output
 from message import rag_system_msg
-from vectordb import search
 
 class AgentState(TypedDict):
     messages: list[AnyMessage]
