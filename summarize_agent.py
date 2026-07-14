@@ -1,9 +1,8 @@
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict,Optional
 from langchain.messages import HumanMessage
-from tools import transcribe, summarizing_model_with_structured_output
-from message import system_msg
-from vectordb import build_documents,store
+from tools import transcribe, summarizing_model_with_structured_output, build_documents,store
+from message import summarizer_system_msg
 import os
 
 class File(TypedDict):
@@ -68,8 +67,8 @@ def summarize_node(state:AgentState):
     else:
         transcription = state['response']
     prompt = f"Here is the transcription of the meeting:\n{transcription}"
-    response = summarizing_model_with_structured_output.invoke([system_msg,HumanMessage(content=prompt)])
-    state['response'] = response.result
+    response = summarizing_model_with_structured_output.invoke([summarizer_system_msg,HumanMessage(content=prompt)])
+    state['response'] = response
     return state
 
 def store_in_vector_db_node(state:AgentState):

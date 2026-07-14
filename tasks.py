@@ -29,7 +29,7 @@ def summarize_file(self,tmp_path:str,file_name:str,file_type:str):
 
 
 @celery.task(bind=True)
-def rag_query(self,query:str):
+def rag(self,query:str):
     result = rag_agent.invoke({
         "messages":[{
             "type":"human",
