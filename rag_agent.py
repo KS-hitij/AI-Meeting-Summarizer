@@ -15,7 +15,7 @@ rag_graph = StateGraph(AgentState)
 def retrieve_data_node(state:AgentState):
     if not state.get('project_id'):
         raise ValueError('Project Id not passed to agent')
-    
+
     project_id = state.get('project_id')
     user_query = state["messages"][-1]
 
@@ -26,7 +26,7 @@ def retrieve_data_node(state:AgentState):
         return state
     import json
     search_results = search.invoke({"query":user_query['content'],"project_id":project_id})
-    r.set(f"project:{project_id}:query:{user_query['content']}", json.dumps(search_results), ex=300) 
+    r.set(f"project:{project_id}:query:{user_query['content']}", json.dumps(search_results), ex=300)
     state["search_results"] = search_results
     return state
 
