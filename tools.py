@@ -42,7 +42,7 @@ class OpenQuestion(BaseModel):
 class Risk(BaseModel):
     risk:str
 
-class Summarizing_Answer(BaseModel):
+class SummarizingAnswer(BaseModel):
     title:str
     summary:str
     action_items:list[ActionItem]
@@ -50,45 +50,53 @@ class Summarizing_Answer(BaseModel):
     risks: Optional[Risk]
 
 
-summarizing_model_with_structured_output = model.with_structured_output(Summarizing_Answer)
+summarizing_model_with_structured_output = model.with_structured_output(SummarizingAnswer)
 
 
 
 # tools for rag agent 
 
-# function for flattening the briefs of the meeting
-def build_documents(answer: Summarizing_Answer, meeting_id: str, date: str) -> list[dict]:
+@tool
+def build_documents(answer: SummarizingAnswer, project_id: str, date: str) -> list[dict]:
+    """ Given the summary of a meeting with it's project id and date build it in a list of data for embedding
+    Args:
+        answer (SummarizingAnswer): The summary of the meeting with it's action items, open ended questions and risks noted
+        project_id (str): The id of the project to which the meeting belongs to
+        date (str): The date on which the meeting took place
+    Returns:
+    docs (list[dict]): A list of dict ready for embedding"""
+    
     docs = []
     
     # Summary level doc
     docs.append({
         "text": f"Meeting: {answer.title}\nSummary: {answer.summary}",
-        "metadata": {"meeting_id": meeting_id, "date": date, "type": "summary"},
-        "id":f"{meeting_id}-summary"
+        "metadata": {"project_id": project_id, "date": date, "type": "summary"},
+        "id":f"{project_id}-summary"
     })
     
     # One doc per action item
     for i, item in enumerate(answer.action_items):
         docs.append({
             "text": f"Action item from meeting '{answer.title}' ({date}): {item.task} (Owner: {item.owner})",
-            "metadata": {"meeting_id": meeting_id, "date": date, "type": "action_item"},
-            "id":f"{meeting_id}-action-{i}"
+            "metadata": {"project_id": project_id, "date": date, "type": "action_item"},
+            "id":f"{project_id}-action-{i}"
         })
     
     # One doc per open question
     for i, q in enumerate(answer.open_questions):
         docs.append({
             "text": f"Open question from meeting '{answer.title}' ({date}): {q.question} (Asked by: {q.asked_by})",
-            "metadata": {"meeting_id": meeting_id, "date": date, "type": "open_question"},
-            "id":f"{meeting_id}-question-{i}"
+            "metadata": {"project_id": project_id, "date": date, "type": "open_question"},
+            "id":f"{project_id}-question-{i}"
         })
     
     # Risk doc
     if answer.risks:
         docs.append({
             "text": f"Risk noted in meeting '{answer.title}' ({date}): {answer.risks}",
-            "metadata": {"meeting_id": meeting_id, "date": date, "type": "risk"},
-            "id":f"{meeting_id}-risk"
+            "metadata": {"project_id": project_id, "date": date, "type": "risk"},
+            "id":f"{project_id}-risk"
         })
     return docs
 
@@ -123,14 +131,15 @@ def embed_query(query:str):
     return result.embeddings[0].values
 
 @tool
-def search(query:str):
-    """"function to search for data related to user's query and return the related data
+def search(query:str,project_id:str):
+    """"function to search for data related to user's query and return the related data which has the same project id as passed in arguments 
     Args:
         query (str): The user query that needs to be answered
+        project_id (str): The project id which belongs to the project user is asking questions about
     Returns: 
         data (List[List[Documents]]): List of documents semantically similar to user's query"""
     result = embed_query(query)
-    result = collection.query(query_embeddings=result)
+    result = collection.query(query_embeddings=result,where={"project_id":project_id})
     data = result["documents"]
     return data
 

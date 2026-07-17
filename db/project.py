@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 
-from base import Base
+from .base import Base
 
 class Project(Base):
     __tablename__ = "projects"

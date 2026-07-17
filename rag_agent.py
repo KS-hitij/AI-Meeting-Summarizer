@@ -6,20 +6,32 @@ from message import rag_system_msg
 
 class AgentState(TypedDict):
     messages: list[AnyMessage]
+    project_id:str
     search_results: list
 
 rag_graph = StateGraph(AgentState)
 
-#store the retrieved data in a cache for faster lookup  
+#retrieve the data from the vector database based on the user query and project id
 def retrieve_data_node(state:AgentState):
+    if not state.get('project_id'):
+        raise ValueError('Project Id not passed to agent')
+    
+    project_id = state.get('project_id')
     user_query = state["messages"][-1]
-    print("User query is: ",user_query['content'])
-    search_results = search.invoke({"query":user_query['content']})
+
+    from redis_client import r
+    cached_result = r.get(f"project:{project_id}:query:{user_query['content']}")
+    if cached_result:
+        state["search_results"] = cached_result
+        return state
+    import json
+    search_results = search.invoke({"query":user_query['content'],"project_id":project_id})
+    r.set(f"project:{project_id}:query:{user_query['content']}", json.dumps(search_results), ex=300) 
     state["search_results"] = search_results
     return state
 
+# This node would typically involve calling an LLM to generate a response based on the retrieved data.
 def answer_user_query_node(state:AgentState):
-    # This node would typically involve calling an LLM to generate a response based on the retrieved data.
     user_query = state["messages"][-1]['content']
     search_results = state.get("search_results", [])
     query_with_context = HumanMessage(content=f"Here is the user query: {user_query}\nHere is the data retrieved information from the vector database:\n{search_results}")

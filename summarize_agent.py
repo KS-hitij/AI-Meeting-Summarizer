@@ -3,6 +3,7 @@ from typing import TypedDict,Optional
 from langchain.messages import HumanMessage
 from tools import transcribe, summarizing_model_with_structured_output, build_documents,store
 from message import summarizer_system_msg
+from datetime import date
 import os
 
 class File(TypedDict):
@@ -15,7 +16,7 @@ class AgentState(TypedDict):
     response:str
     query:str
     llm_calls:int
-    meeting_id:str
+    project_id:str
 
 
 graph = StateGraph(AgentState)
@@ -73,9 +74,10 @@ def summarize_node(state:AgentState):
 
 def store_in_vector_db_node(state:AgentState):
     """Store the summarized details of the meeting in vector db"""
-    docs = build_documents(state["response"],"123","08-07-2026")
+    docs = build_documents.invoke({"answer":state["response"], "project_id":state["project_id"], "date":date.today().isoformat()})
     store(docs)
     return state
+
 
 graph.add_node("transcribe",transcribe_node)
 graph.add_node("summarize",summarize_node)
