@@ -13,6 +13,7 @@ summarizer_system_msg = SystemMessage(
         "information needed to answer future questions about this meeting."
         "Include decisions, reasoning, alternatives considered also."
         "Do not miss any information that was discussed in the meeting."
+        "Preserve important nouns and terminology exactly as they appear in the transcript whenever possible (such as product names, APIs, ticket IDs, customer names, technologies, and feature names)."
     )
 )
 
