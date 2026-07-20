@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from db.database import init_db, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from redis_client import r
+from .redis_client import r
 
 
 class RagRequestClass(BaseModel):
@@ -70,7 +70,6 @@ def rag_query(rag_req:RagRequestClass):
 
 @app.post("/projects")
 async def create_project(project: ProjectCreateClass, db: AsyncSession = Depends(get_db)):
-    print("Creating project")
     project = Project(
         project_id=project.project_id,
         project_name=project.project_name,
@@ -83,7 +82,6 @@ async def create_project(project: ProjectCreateClass, db: AsyncSession = Depends
 
 @app.get("/projects")
 async def get_projects(db: AsyncSession = Depends(get_db)):
-    print("Getting projects")
     result = await db.execute(select(Project))
     projects = result.scalars().all()
     return {"projects": [{"project_id": p.project_id, "project_name": p.project_name} for p in projects]}
