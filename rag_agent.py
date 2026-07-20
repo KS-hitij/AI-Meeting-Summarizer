@@ -1,13 +1,14 @@
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict
 from langchain.messages import AnyMessage, AIMessage, HumanMessage
-from tools import rag_model_with_structured_output,search
-from message import rag_system_msg
+from tools import rag_model_with_structured_output,search, judge_model_with_structured_output, SummarizingAnswer, improve_model_with_structured_output
+from message import rag_system_msg,judge_system_message, improve_system_message
 
 class AgentState(TypedDict):
     messages: list[AnyMessage]
     project_id:str
     search_results: list
+    llm_output:SummarizingAnswer
 
 rag_graph = StateGraph(AgentState)
 
@@ -36,6 +37,27 @@ def answer_user_query_node(state:AgentState):
     search_results = state.get("search_results", [])
     query_with_context = HumanMessage(content=f"Here is the user query: {user_query}\nHere is the data retrieved information from the vector database:\n{search_results}")
     response = rag_model_with_structured_output.invoke([rag_system_msg,query_with_context ])
+    return state
+
+def judge_llm_answer_node(state:AgentState):
+    llm_response = state.get("llm_output")
+    search_results = state.get("search_results", [])
+    user_query = state["messages"][-1]['content']
+    judge_prompt = HumanMessage(content=f"Query: {user_query}\nAnswer: {llm_response}\nContext: {search_results} Judge only on the basis of the provided context")
+    response = judge_model_with_structured_output.invoke(input=[judge_system_message,judge_prompt])
+    if response.accurate:
+        ai_output = AIMessage(content=response.response)
+        state["messages"].append(ai_output)
+        return 'true'
+    else:
+        return 'false'
+
+def improve_llm_response_node(state:AgentState):
+    llm_response = state.get("llm_output")
+    search_results = state.get("search_results", [])
+    user_query = state["messages"][-1]['content']
+    prompt = HumanMessage(content=f"User Query: {user_query}\nPrevious Response:{llm_response}\nRetrieved Information:{search_results}")
+    response = improve_model_with_structured_output.invoke(input=[improve_system_message,prompt])
     ai_output = AIMessage(content=response.response)
     state["messages"].append(ai_output)
     return state
@@ -44,9 +66,18 @@ rag_graph = StateGraph(AgentState)
 
 rag_graph.add_node("retrieve_data", retrieve_data_node)
 rag_graph.add_node("answer_user_query", answer_user_query_node)
+rag_graph.add_node("improve_llm_response",improve_llm_response_node)
 
 rag_graph.add_edge(START, "retrieve_data")
 rag_graph.add_edge("retrieve_data", "answer_user_query")
-rag_graph.add_edge("answer_user_query", END)
+rag_graph.add_conditional_edges(
+    "answer_user_query",
+    judge_llm_answer_node,
+    {
+        "true":END,
+        "false":"improve_llm_response"
+    }
+)
+rag_graph.add_edge("improve_llm_response",END)
 
 rag_agent = rag_graph.compile()

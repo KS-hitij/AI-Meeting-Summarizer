@@ -49,8 +49,9 @@ class SummarizingAnswer(BaseModel):
     open_questions:list[OpenQuestion]
     risks: Optional[Risk]
 
+class JudgeAnswer(BaseModel):
+    accurate: bool
 
-summarizing_model_with_structured_output = model.with_structured_output(SummarizingAnswer)
 
 
 
@@ -147,3 +148,6 @@ class Rag_Answer(BaseModel):
     response:str
 
 rag_model_with_structured_output = model.with_structured_output(Rag_Answer)
+summarizing_model_with_structured_output = model.with_structured_output(SummarizingAnswer)
+judge_model_with_structured_output = model.with_structured_output(JudgeAnswer)
+improve_model_with_structured_output = model.with_structured_output(Rag_Answer)
