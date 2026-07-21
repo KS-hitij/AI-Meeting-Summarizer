@@ -2,6 +2,7 @@ import chromadb
 from google import genai
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 chroma_client = chromadb.PersistentClient(path="./chroma")
