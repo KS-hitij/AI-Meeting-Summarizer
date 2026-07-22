@@ -1,5 +1,8 @@
 import os
 from dotenv import load_dotenv
+from langchain.chat_models import init_chat_model
+from typing import Optional
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -36,13 +39,13 @@ class JudgeAnswer(BaseModel):
     accurate: bool
 
 
-class Rag_Answer(BaseModel):
+class RagAnswer(BaseModel):
     response: str
 
 
-rag_model_with_structured_output = model.with_structured_output(Rag_Answer)
+rag_model_with_structured_output = model.with_structured_output(RagAnswer)
 summarizing_model_with_structured_output = model.with_structured_output(
     SummarizingAnswer
 )
 judge_model_with_structured_output = model.with_structured_output(JudgeAnswer)
-improve_model_with_structured_output = model.with_structured_output(Rag_Answer)
+improve_model_with_structured_output = model.with_structured_output(RagAnswer)

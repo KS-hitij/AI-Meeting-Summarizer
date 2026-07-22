@@ -3,10 +3,10 @@ from typing import TypedDict, Optional
 from langchain.messages import HumanMessage
 from tools import (
     transcribe,
-    summarizing_model_with_structured_output,
     build_documents,
     store,
 )
+from models import summarizing_model_with_structured_output
 from message import summarizer_system_msg
 from datetime import date
 import os

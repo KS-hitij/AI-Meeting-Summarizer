@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from db.database import init_db, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from .redis_client import r
+from redis_client import r
 
 
 class RagRequestClass(BaseModel):

@@ -14,7 +14,7 @@ class AgentState(TypedDict):
     messages: list[AnyMessage]
     project_id: str
     search_results: list
-    llm_output: SummarizingAnswer
+    llm_output: str
 
 
 rag_graph = StateGraph(AgentState)
@@ -58,6 +58,7 @@ def answer_user_query_node(state: AgentState):
     response = rag_model_with_structured_output.invoke(
         [rag_system_msg, query_with_context]
     )
+    state["llm_output"] = response.response
     return state
 
 
@@ -72,7 +73,7 @@ def judge_llm_answer_node(state: AgentState):
         input=[judge_system_message, judge_prompt]
     )
     if response.accurate:
-        ai_output = AIMessage(content=response.response)
+        ai_output = AIMessage(content=llm_response)
         state["messages"].append(ai_output)
         return "true"
     else:
