@@ -14,11 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from redis_client import r
 import bcrypt
 import uuid
-import base64
-import hashlib
-import hmac
-import json
+from datetime import timedelta, timezone
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
 
 
 class RagRequestClass(BaseModel):
@@ -46,36 +44,28 @@ UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 auth_scheme = HTTPBearer(auto_error=False)
 AUTH_SECRET = os.getenv("AUTH_SECRET", "change-me-in-production")
+AUTH_ALGORITHM = os.getenv("AUTH_ALGORITHM", "HS256")
+AUTH_TOKEN_EXPIRE_MINUTES = int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "10080"))
 
 
-def _sign_auth_payload(payload: dict) -> str:
-    raw_payload = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
-        "utf-8"
+def _create_access_token(payload: dict) -> str:
+    to_encode = payload.copy()
+    to_encode["exp"] = datetime.now(timezone.utc) + timedelta(
+        minutes=AUTH_TOKEN_EXPIRE_MINUTES
     )
-    payload_b64 = base64.urlsafe_b64encode(raw_payload).decode("utf-8").rstrip("=")
-    signature = hmac.new(
-        AUTH_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256
-    ).digest()
-    signature_b64 = base64.urlsafe_b64encode(signature).decode("utf-8").rstrip("=")
-    return f"{payload_b64}.{signature_b64}"
+    return jwt.encode(to_encode, AUTH_SECRET, algorithm=AUTH_ALGORITHM)
 
 
 def _verify_auth_token(token: str) -> dict:
     try:
-        payload_b64, signature_b64 = token.split(".")
-        expected_signature = hmac.new(
-            AUTH_SECRET.encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256
-        ).digest()
-        expected_signature_b64 = (
-            base64.urlsafe_b64encode(expected_signature).decode("utf-8").rstrip("=")
-        )
-        if not hmac.compare_digest(signature_b64, expected_signature_b64):
-            raise ValueError("Invalid signature")
-        padded_payload = payload_b64 + "=" * (-len(payload_b64) % 4)
-        return json.loads(base64.urlsafe_b64decode(padded_payload.encode("utf-8")))
-    except Exception as exc:
+        return jwt.decode(token, AUTH_SECRET, algorithms=[AUTH_ALGORITHM])
+    except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired"
+        ) from exc
+    except jwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         ) from exc
 
 
@@ -143,7 +133,7 @@ async def signup(user: UserCreateClass, db: AsyncSession = Depends(get_db)):
     )
     db.add(user_data)
     await db.commit()
-    token = _sign_auth_payload(
+    token = _create_access_token(
         {"user_id": user_data.user_id, "user_email": user_data.user_email}
     )
     return {"message": "User created successfully", "token": token}
@@ -159,7 +149,7 @@ async def login(user: LoginClass, db: AsyncSession = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
-    token = _sign_auth_payload(
+    token = _create_access_token(
         {"user_id": db_user.user_id, "user_email": db_user.user_email}
     )
     return {"message": "Login successful", "token": token}
