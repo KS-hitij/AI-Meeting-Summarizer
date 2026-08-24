@@ -5,14 +5,13 @@ from datetime import datetime
 from .base import Base
 
 
-class Project(Base):
-    __tablename__ = "projects"
-    project_id: Mapped[str] = mapped_column(String, primary_key=True)
-    project_name: Mapped[str] = mapped_column(String, nullable=False)
+class User(Base):
+    __tablename__ = "users"
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow(), onupdate=datetime.utcnow()
     )
-    project_members: Mapped[str] = (
-        mapped_column(String),
-    )  # reference to user table, comma separated list of user ids
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    user_email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
