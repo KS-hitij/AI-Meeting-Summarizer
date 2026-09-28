@@ -22,7 +22,6 @@ class AgentState(TypedDict):
     file: Optional[File]
     response: str
     query: str
-    llm_calls: int
     project_id: str
     meeting_id: str
 
