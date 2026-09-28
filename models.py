@@ -41,6 +41,7 @@ class JudgeAnswer(BaseModel):
 
 class RagAnswer(BaseModel):
     response: str
+    evidence: Optional[str]
 
 
 rag_model_with_structured_output = model.with_structured_output(RagAnswer)

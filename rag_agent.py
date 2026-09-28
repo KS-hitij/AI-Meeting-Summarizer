@@ -14,7 +14,12 @@ class AgentState(TypedDict):
     messages: list[AnyMessage]
     project_id: str
     search_results: list
-    llm_output: str
+    llm_output: LlmOutput
+
+
+class LlmOutput(TypedDict):
+    response: str
+    evidence: str
 
 
 rag_graph = StateGraph(AgentState)
@@ -67,13 +72,13 @@ def judge_llm_answer_node(state: AgentState):
     search_results = state.get("search_results", [])
     user_query = state["messages"][-1]["content"]
     judge_prompt = HumanMessage(
-        content=f"Query: {user_query}\nAnswer: {llm_response}\nContext: {search_results} Judge only on the basis of the provided context"
+        content=f"Query: {user_query}\nAnswer: {llm_response.response}\nEvidence: {llm_response.evidence}\nContext: {search_results} Judge only on the basis of the provided context"
     )
     response = judge_model_with_structured_output.invoke(
         input=[judge_system_message, judge_prompt]
     )
     if response.accurate:
-        ai_output = AIMessage(content=llm_response)
+        ai_output = AIMessage(content=llm_response.response)
         state["messages"].append(ai_output)
         return "true"
     else:
