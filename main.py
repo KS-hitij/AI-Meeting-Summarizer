@@ -46,6 +46,7 @@ auth_scheme = HTTPBearer(auto_error=False)
 AUTH_SECRET = os.getenv("AUTH_SECRET", "change-me-in-production")
 AUTH_ALGORITHM = os.getenv("AUTH_ALGORITHM", "HS256")
 AUTH_TOKEN_EXPIRE_MINUTES = int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "10080"))
+TASK_METADATA_TTL_SECONDS = AUTH_TOKEN_EXPIRE_MINUTES * 60
 
 
 def _create_access_token(payload: dict) -> str:
@@ -177,11 +178,29 @@ async def summarize(
     await get_project_or_403(project_id, current_user, db)
 
     task = summarize_file.delay(tmp_path, file.filename, file_type, project_id)
+    r.hset(
+        f"task:{task.id}",
+        mapping={
+            "user_id": current_user.user_id,
+            "project_id": project_id,
+        },
+    )
+    r.expire(f"task:{task.id}", TASK_METADATA_TTL_SECONDS)
     return {"task_id": task.id}
 
 
 @app.get("/tasks/{task_id}")
-def get_task_status(task_id: str):
+async def get_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    task_metadata = r.hgetall(f"task:{task_id}")
+    if not task_metadata or task_metadata.get("user_id") != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+
     async_result = summarize_file.AsyncResult(task_id)
     return {
         "task_id": task_id,
