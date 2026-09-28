@@ -177,7 +177,10 @@ async def summarize(
 
     await get_project_or_403(project_id, current_user, db)
 
-    task = summarize_file.delay(tmp_path, file.filename, file_type, project_id)
+    meeting_id = uuid.uuid4().hex
+    task = summarize_file.delay(
+        tmp_path, file.filename, file_type, project_id, meeting_id
+    )
     r.hset(
         f"task:{task.id}",
         mapping={

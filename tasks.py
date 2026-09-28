@@ -12,7 +12,12 @@ celery = Celery("tasks", broker=CELERY_REDIS_CLIENT, backend=CELERY_REDIS_CLIENT
 
 @celery.task(bind=True)
 def summarize_file(
-    self, tmp_path: str, file_name: str, file_type: str, project_id: str
+    self,
+    tmp_path: str,
+    file_name: str,
+    file_type: str,
+    project_id: str,
+    meeting_id: str,
 ):
     result = summarize_agent.invoke(
         {
@@ -22,6 +27,7 @@ def summarize_file(
                 "file_type": file_type,
             },
             "project_id": project_id,
+            "meeting_id": meeting_id,
         }
     )
     try:

@@ -27,7 +27,7 @@ def transcribe(file_path: str) -> str:
 
 @tool
 def build_documents(
-    answer: SummarizingAnswer, project_id: str, date: str
+    answer: SummarizingAnswer, project_id: str, meeting_id: str, date: str
 ) -> list[dict]:
     """Given the summary of a meeting with it's project id and date build it in a list of data for embedding
     Args:
@@ -43,8 +43,13 @@ def build_documents(
     docs.append(
         {
             "text": f"Meeting: {answer.title}\nSummary: {answer.summary}",
-            "metadata": {"project_id": project_id, "date": date, "type": "summary"},
-            "id": f"{project_id}-summary",
+            "metadata": {
+                "project_id": project_id,
+                "meeting_id": meeting_id,
+                "date": date,
+                "type": "summary",
+            },
+            "id": f"{meeting_id}-summary",
         }
     )
 
@@ -55,10 +60,11 @@ def build_documents(
                 "text": f"Action item from meeting '{answer.title}' ({date}): {item.task} (Owner: {item.owner})",
                 "metadata": {
                     "project_id": project_id,
+                    "meeting_id": meeting_id,
                     "date": date,
                     "type": "action_item",
                 },
-                "id": f"{project_id}-action-{i}",
+                "id": f"{meeting_id}-action-{i}",
             }
         )
 
@@ -69,10 +75,11 @@ def build_documents(
                 "text": f"Open question from meeting '{answer.title}' ({date}): {q.question} (Asked by: {q.asked_by})",
                 "metadata": {
                     "project_id": project_id,
+                    "meeting_id": meeting_id,
                     "date": date,
                     "type": "open_question",
                 },
-                "id": f"{project_id}-question-{i}",
+                "id": f"{meeting_id}-question-{i}",
             }
         )
 
@@ -81,8 +88,13 @@ def build_documents(
         docs.append(
             {
                 "text": f"Risk noted in meeting '{answer.title}' ({date}): {answer.risks}",
-                "metadata": {"project_id": project_id, "date": date, "type": "risk"},
-                "id": f"{project_id}-risk",
+                "metadata": {
+                    "project_id": project_id,
+                    "meeting_id": meeting_id,
+                    "date": date,
+                    "type": "risk",
+                },
+                "id": f"{meeting_id}-risk",
             }
         )
     return docs

@@ -24,6 +24,7 @@ class AgentState(TypedDict):
     query: str
     llm_calls: int
     project_id: str
+    meeting_id: str
 
 
 graph = StateGraph(AgentState)
@@ -91,6 +92,7 @@ def store_in_vector_db_node(state: AgentState):
         {
             "answer": state["response"],
             "project_id": state["project_id"],
+            "meeting_id": state["meeting_id"],
             "date": date.today().isoformat(),
         }
     )
