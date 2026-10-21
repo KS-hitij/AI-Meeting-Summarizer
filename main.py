@@ -1,7 +1,4 @@
 from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
 import os
 import tempfile
 import logging
@@ -18,9 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from redis_client import r
 import bcrypt
 import uuid
-from datetime import timedelta, timezone
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import jwt
+from util import (
+    AUTH_TOKEN_EXPIRE_MINUTES,
+    create_access_token,
+    register_exception_handlers,
+    verify_auth_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,47 +116,9 @@ API_ERROR_RESPONSES = {
 UPLOAD_DIRECTORY = "uploads/"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 auth_scheme = HTTPBearer(auto_error=False)
-AUTH_SECRET = os.getenv("AUTH_SECRET", "change-me-in-production")
-AUTH_ALGORITHM = os.getenv("AUTH_ALGORITHM", "HS256")
-AUTH_TOKEN_EXPIRE_MINUTES = int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "10080"))
 TASK_METADATA_TTL_SECONDS = AUTH_TOKEN_EXPIRE_MINUTES * 60
 MAX_UPLOAD_SIZE_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(25 * 1024 * 1024)))
 UPLOAD_CHUNK_SIZE_BYTES = 64 * 1024
-
-
-def _error_code_for_status(status_code: int) -> str:
-    return {
-        status.HTTP_400_BAD_REQUEST: "invalid_request",
-        status.HTTP_401_UNAUTHORIZED: "unauthorized",
-        status.HTTP_403_FORBIDDEN: "forbidden",
-        status.HTTP_404_NOT_FOUND: "not_found",
-        status.HTTP_409_CONFLICT: "conflict",
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: "payload_too_large",
-        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
-        status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
-        status.HTTP_429_TOO_MANY_REQUESTS: "rate_limited",
-    }.get(status_code, "http_error")
-
-
-def _create_access_token(payload: dict) -> str:
-    to_encode = payload.copy()
-    to_encode["exp"] = datetime.now(timezone.utc) + timedelta(
-        minutes=AUTH_TOKEN_EXPIRE_MINUTES
-    )
-    return jwt.encode(to_encode, AUTH_SECRET, algorithm=AUTH_ALGORITHM)
-
-
-def _verify_auth_token(token: str) -> dict:
-    try:
-        return jwt.decode(token, AUTH_SECRET, algorithms=[AUTH_ALGORITHM])
-    except jwt.ExpiredSignatureError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired"
-        ) from exc
-    except jwt.PyJWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        ) from exc
 
 
 async def get_current_user(
@@ -166,7 +129,7 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
-    payload = _verify_auth_token(credentials.credentials)
+    payload = verify_auth_token(credentials.credentials)
     user_id = payload.get("user_id")
     if not user_id:
         raise HTTPException(
@@ -208,59 +171,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request, exc: StarletteHTTPException):
-    detail = exc.detail
-    message = (
-        detail if isinstance(detail, str) else "The request could not be completed"
-    )
-    body = {
-        "error": {
-            "code": _error_code_for_status(exc.status_code),
-            "message": message,
-        }
-    }
-    if not isinstance(detail, str):
-        body["error"]["details"] = detail
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=body,
-        headers=exc.headers,
-    )
-
-
-@app.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(request, exc: RequestValidationError):
-    details = [
-        {"field": ".".join(str(part) for part in error["loc"]), "message": error["msg"]}
-        for error in exc.errors()
-    ]
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error": {
-                "code": "validation_error",
-                "message": "Request validation failed",
-                "details": details,
-            }
-        },
-    )
-
-
-@app.exception_handler(Exception)
-async def unexpected_exception_handler(request, exc: Exception):
-    logger.exception("Unhandled API error", exc_info=exc)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": {
-                "code": "internal_error",
-                "message": "An unexpected error occurred",
-            }
-        },
-    )
+register_exception_handlers(app)
 
 
 @app.post(
@@ -279,7 +190,7 @@ async def signup(user: UserCreateClass, db: AsyncSession = Depends(get_db)):
     )
     db.add(user_data)
     await db.commit()
-    token = _create_access_token(
+    token = create_access_token(
         {"user_id": user_data.user_id, "user_email": user_data.user_email}
     )
     return {"message": "User created successfully", "token": token}
@@ -299,7 +210,7 @@ async def login(user: LoginClass, db: AsyncSession = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
-    token = _create_access_token(
+    token = create_access_token(
         {"user_id": db_user.user_id, "user_email": db_user.user_email}
     )
     return {"message": "Login successful", "token": token}
