@@ -1,7 +1,10 @@
 from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import os
 import tempfile
-import shutil
+import logging
 from db.project import Project
 from db.user import User
 from sqlalchemy import select
@@ -17,6 +20,8 @@ import uuid
 from datetime import timedelta, timezone
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import jwt
+
+logger = logging.getLogger(__name__)
 
 
 class RagRequestClass(BaseModel):
@@ -47,6 +52,22 @@ AUTH_SECRET = os.getenv("AUTH_SECRET", "change-me-in-production")
 AUTH_ALGORITHM = os.getenv("AUTH_ALGORITHM", "HS256")
 AUTH_TOKEN_EXPIRE_MINUTES = int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "10080"))
 TASK_METADATA_TTL_SECONDS = AUTH_TOKEN_EXPIRE_MINUTES * 60
+MAX_UPLOAD_SIZE_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(25 * 1024 * 1024)))
+UPLOAD_CHUNK_SIZE_BYTES = 64 * 1024
+
+
+def _error_code_for_status(status_code: int) -> str:
+    return {
+        status.HTTP_400_BAD_REQUEST: "invalid_request",
+        status.HTTP_401_UNAUTHORIZED: "unauthorized",
+        status.HTTP_403_FORBIDDEN: "forbidden",
+        status.HTTP_404_NOT_FOUND: "not_found",
+        status.HTTP_409_CONFLICT: "conflict",
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: "payload_too_large",
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
+        status.HTTP_422_UNPROCESSABLE_ENTITY: "validation_error",
+        status.HTTP_429_TOO_MANY_REQUESTS: "rate_limited",
+    }.get(status_code, "http_error")
 
 
 def _create_access_token(payload: dict) -> str:
@@ -122,6 +143,59 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc: StarletteHTTPException):
+    detail = exc.detail
+    message = (
+        detail if isinstance(detail, str) else "The request could not be completed"
+    )
+    body = {
+        "error": {
+            "code": _error_code_for_status(exc.status_code),
+            "message": message,
+        }
+    }
+    if not isinstance(detail, str):
+        body["error"]["details"] = detail
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=body,
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request, exc: RequestValidationError):
+    details = [
+        {"field": ".".join(str(part) for part in error["loc"]), "message": error["msg"]}
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": {
+                "code": "validation_error",
+                "message": "Request validation failed",
+                "details": details,
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(request, exc: Exception):
+    logger.exception("Unhandled API error", exc_info=exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": {
+                "code": "internal_error",
+                "message": "An unexpected error occurred",
+            }
+        },
+    )
+
+
 @app.post("/signup")
 async def signup(user: UserCreateClass, db: AsyncSession = Depends(get_db)):
     password_hash = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt())
@@ -156,40 +230,99 @@ async def login(user: LoginClass, db: AsyncSession = Depends(get_db)):
     return {"message": "Login successful", "token": token}
 
 
-@app.post("/summarize/{project_id}")
+@app.post("/summarize/{project_id}", status_code=status.HTTP_202_ACCEPTED)
 async def summarize(
     project_id: str,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    suffix = os.path.splitext(file.filename)[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
+    tmp_path = None
+    task_metadata_key = None
+    try:
+        original_filename = os.path.basename((file.filename or "").replace("\\", "/"))
+        if not original_filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A filename is required",
+            )
 
-    if file.content_type in ("audio/mpeg", "audio/wav", "audio/mp4"):
-        file_type = "audio"
-    elif file.content_type == "text/plain":
-        file_type = "text"
-    else:
-        raise ValueError("Wrong type of file passed only text and audio allowed")
+        media_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+        supported_types = {
+            "audio/mpeg": ("audio", ".mp3"),
+            "audio/wav": ("audio", ".wav"),
+            "audio/x-wav": ("audio", ".wav"),
+            "audio/mp4": ("audio", ".m4a"),
+            "text/plain": ("text", ".txt"),
+        }
+        if media_type not in supported_types:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Only MPEG, WAV, MP4 audio, and plain text files are supported",
+            )
+        file_type, suffix = supported_types[media_type]
 
-    await get_project_or_403(project_id, current_user, db)
+        if file.size is not None and file.size > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds the {MAX_UPLOAD_SIZE_BYTES}-byte upload limit",
+            )
 
-    meeting_id = uuid.uuid4().hex
-    task = summarize_file.delay(
-        tmp_path, file.filename, file_type, project_id, meeting_id
-    )
-    r.hset(
-        f"task:{task.id}",
-        mapping={
-            "user_id": current_user.user_id,
-            "project_id": project_id,
-        },
-    )
-    r.expire(f"task:{task.id}", TASK_METADATA_TTL_SECONDS)
-    return {"task_id": task.id}
+        await get_project_or_403(project_id, current_user, db)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            total_size = 0
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE_BYTES):
+                total_size += len(chunk)
+                if total_size > MAX_UPLOAD_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File exceeds the {MAX_UPLOAD_SIZE_BYTES}-byte upload limit",
+                    )
+                tmp.write(chunk)
+
+        if total_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The uploaded file is empty",
+            )
+
+        meeting_id = uuid.uuid4().hex
+        task_id = uuid.uuid4().hex
+        task_metadata_key = f"task:{task_id}"
+        r.hset(
+            task_metadata_key,
+            mapping={
+                "user_id": current_user.user_id,
+                "project_id": project_id,
+            },
+        )
+        r.expire(task_metadata_key, TASK_METADATA_TTL_SECONDS)
+        summarize_file.apply_async(
+            args=[tmp_path, original_filename, file_type, project_id, meeting_id],
+            task_id=task_id,
+        )
+
+        # The Celery worker owns the temporary file after the task is queued.
+        tmp_path = None
+        return {"task_id": task_id}
+    except Exception:
+        if task_metadata_key:
+            try:
+                r.delete(task_metadata_key)
+            except Exception:
+                logger.exception("Failed to remove task metadata after upload failure")
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.exception("Failed to remove temporary upload file")
+        raise
+    finally:
+        await file.close()
 
 
 @app.get("/tasks/{task_id}")
