@@ -10,7 +10,8 @@ from db.user import User
 from sqlalchemy import select
 from datetime import datetime
 from tasks import summarize_file, rag
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, StringConstraints
+from typing import Annotated, Any
 from contextlib import asynccontextmanager
 from db.database import init_db, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,24 +26,90 @@ logger = logging.getLogger(__name__)
 
 
 class RagRequestClass(BaseModel):
-    query: str
-    project_id: str
+    query: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
+    ]
+    project_id: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+    ]
 
 
 class ProjectCreateClass(BaseModel):
+    project_id: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+    ]
+    project_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+    ]
+
+
+class LoginClass(BaseModel):
+    user_email: EmailStr
+    password: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+
+
+class UserCreateClass(BaseModel):
+    user_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+    ]
+    user_email: EmailStr
+    password: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+
+
+class TokenResponse(BaseModel):
+    message: str
+    token: str
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
+class TaskSubmissionResponse(BaseModel):
+    task_id: str
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    # Celery task results differ by task type and may be absent until completion.
+    result: Any | None = None
+
+
+class ProjectResponse(BaseModel):
     project_id: str
     project_name: str
 
 
-class LoginClass(BaseModel):
-    user_email: str
-    password: str
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectResponse]
 
 
-class UserCreateClass(BaseModel):
-    user_name: str
-    user_email: str
-    password: str
+class APIErrorBody(BaseModel):
+    code: str
+    message: str
+    details: Any | None = None
+
+
+class APIErrorResponse(BaseModel):
+    error: APIErrorBody
+
+
+API_ERROR_RESPONSES = {
+    code: {"model": APIErrorResponse}
+    for code in (
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_404_NOT_FOUND,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+}
 
 
 UPLOAD_DIRECTORY = "uploads/"
@@ -196,7 +263,11 @@ async def unexpected_exception_handler(request, exc: Exception):
     )
 
 
-@app.post("/signup")
+@app.post(
+    "/signup",
+    response_model=TokenResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def signup(user: UserCreateClass, db: AsyncSession = Depends(get_db)):
     password_hash = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt())
     user_data = User(
@@ -214,7 +285,11 @@ async def signup(user: UserCreateClass, db: AsyncSession = Depends(get_db)):
     return {"message": "User created successfully", "token": token}
 
 
-@app.post("/login")
+@app.post(
+    "/login",
+    response_model=TokenResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def login(user: LoginClass, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.user_email == user.user_email))
     db_user = result.scalars().first()
@@ -230,7 +305,12 @@ async def login(user: LoginClass, db: AsyncSession = Depends(get_db)):
     return {"message": "Login successful", "token": token}
 
 
-@app.post("/summarize/{project_id}", status_code=status.HTTP_202_ACCEPTED)
+@app.post(
+    "/summarize/{project_id}",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TaskSubmissionResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def summarize(
     project_id: str,
     file: UploadFile = File(...),
@@ -325,7 +405,11 @@ async def summarize(
         await file.close()
 
 
-@app.get("/tasks/{task_id}")
+@app.get(
+    "/tasks/{task_id}",
+    response_model=TaskStatusResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def get_task_status(
     task_id: str,
     current_user: User = Depends(get_current_user),
@@ -345,7 +429,11 @@ async def get_task_status(
     }
 
 
-@app.post("/rag_query")
+@app.post(
+    "/rag_query",
+    response_model=TaskSubmissionResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def rag_query(
     rag_req: RagRequestClass,
     db: AsyncSession = Depends(get_db),
@@ -356,7 +444,11 @@ async def rag_query(
     return {"task_id": task.id}
 
 
-@app.post("/projects")
+@app.post(
+    "/projects",
+    response_model=MessageResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def create_project(
     project: ProjectCreateClass,
     db: AsyncSession = Depends(get_db),
@@ -374,7 +466,11 @@ async def create_project(
     return {"message": "Project created successfully"}
 
 
-@app.get("/projects")
+@app.get(
+    "/projects",
+    response_model=ProjectListResponse,
+    responses=API_ERROR_RESPONSES,
+)
 async def get_projects(
     db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
