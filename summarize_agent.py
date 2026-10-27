@@ -1,12 +1,8 @@
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict, Optional
 from langchain.messages import HumanMessage
-from tools import (
-    transcribe,
-    build_documents,
-    store,
-)
-from models import summarizing_model_with_structured_output
+from tools import transcribe, build_documents, store
+from models import summarizing_model_with_structured_output, SummarizingAnswer
 from message import summarizer_system_msg
 from datetime import date
 import os
@@ -20,7 +16,8 @@ class File(TypedDict):
 
 class AgentState(TypedDict):
     file: Optional[File]
-    response: str
+    response: SummarizingAnswer
+    transcription: str
     query: str
     project_id: str
     meeting_id: str
@@ -61,7 +58,7 @@ def transcribe_node(state: AgentState) -> AgentState:
 
     transcription = transcribe.invoke({"file_path": file_path})
 
-    state["response"] = transcription
+    state["transcription"] = transcription
     return state
 
 
@@ -76,7 +73,7 @@ def summarize_node(state: AgentState):
             content = file.read()
         transcription = content
     else:
-        transcription = state["response"]
+        transcription = state["transcription"]
     prompt = f"Here is the transcription of the meeting:\n{transcription}"
     response = summarizing_model_with_structured_output.invoke(
         [summarizer_system_msg, HumanMessage(content=prompt)]

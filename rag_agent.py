@@ -63,7 +63,7 @@ def answer_user_query_node(state: AgentState):
     response = rag_model_with_structured_output.invoke(
         [rag_system_msg, query_with_context]
     )
-    state["llm_output"] = response.response
+    state["llm_output"] = response
     return state
 
 
