@@ -10,16 +10,16 @@ from models import (
 )
 
 
+class LlmOutput(TypedDict):
+    response: str
+    evidence: str
+
+
 class AgentState(TypedDict):
     messages: list[AnyMessage]
     project_id: str
     search_results: list
     llm_output: LlmOutput
-
-
-class LlmOutput(TypedDict):
-    response: str
-    evidence: str
 
 
 rag_graph = StateGraph(AgentState)
