@@ -2,6 +2,7 @@ from langchain.tools import tool
 from vectordb import emb_client, collection
 from google.genai import types
 from models import SummarizingAnswer
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 import whisper
 
@@ -24,6 +25,26 @@ def transcribe(file_path: str) -> str:
 
 # tools for rag agent
 
+#function for chunking the summary provided by the Summarizing Agent
+def chunk_summary(summary, chunk_size=500, chunk_overlap=75):
+
+    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        encoding_name="cl100k_base",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=[
+            "\n\n",
+            "\n",
+            ". ",
+            " ",
+            ""
+        ]
+    )
+
+    chunks = splitter.split_text(summary)
+
+    return chunks
+
 
 @tool
 def build_documents(
@@ -38,31 +59,35 @@ def build_documents(
     docs (list[dict]): A list of dict ready for embedding"""
 
     docs = []
+    chunks = chunk_summary(answer.summary)
 
-    # Summary level doc
-    docs.append(
-        {
-            "text": f"Meeting: {answer.title}\nSummary: {answer.summary}",
-            "metadata": {
-                "project_id": project_id,
-                "meeting_id": meeting_id,
-                "date": date,
-                "type": "summary",
-            },
-            "id": f"{meeting_id}-summary",
-        }
-    )
+    for chunk in chunks:
+        # Summary Chunk level doc
+        docs.append(
+            {
+                "text": f"Meeting: {answer.title}\nSummary: {chunk}",
+                "metadata": {
+                    "project_id": project_id,
+                    "meeting_id": meeting_id,
+                    "date": date,
+                    "type": "summary-chunk",
+                    "title":answer.title
+                },
+                "id": f"{meeting_id}-summary",
+            }
+        )
 
     # One doc per action item
     for i, item in enumerate(answer.action_items):
         docs.append(
             {
-                "text": f"Action item from meeting '{answer.title}' ({date}): {item.task} (Owner: {item.owner})",
+                "text": f"Action item from meeting ({date}): {item.task} (Owner: {item.owner})",
                 "metadata": {
                     "project_id": project_id,
                     "meeting_id": meeting_id,
                     "date": date,
                     "type": "action_item",
+                    "title":answer.title
                 },
                 "id": f"{meeting_id}-action-{i}",
             }
@@ -72,12 +97,13 @@ def build_documents(
     for i, q in enumerate(answer.open_questions):
         docs.append(
             {
-                "text": f"Open question from meeting '{answer.title}' ({date}): {q.question} (Asked by: {q.asked_by})",
+                "text": f"Open question from meeting ({date}): {q.question} (Asked by: {q.asked_by})",
                 "metadata": {
                     "project_id": project_id,
                     "meeting_id": meeting_id,
                     "date": date,
                     "type": "open_question",
+                    "title":answer.title
                 },
                 "id": f"{meeting_id}-question-{i}",
             }
@@ -87,12 +113,13 @@ def build_documents(
     if answer.risks:
         docs.append(
             {
-                "text": f"Risk noted in meeting '{answer.title}' ({date}): {answer.risks}",
+                "text": f"Risk noted in meeting ({date}): {answer.risks}",
                 "metadata": {
                     "project_id": project_id,
                     "meeting_id": meeting_id,
                     "date": date,
                     "type": "risk",
+                    "title":answer.title
                 },
                 "id": f"{meeting_id}-risk",
             }
