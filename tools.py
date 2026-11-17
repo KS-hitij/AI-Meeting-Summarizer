@@ -3,6 +3,7 @@ from vectordb import emb_client, collection
 from google.genai import types
 from models import SummarizingAnswer
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sentence_transformers import CrossEncoder
 import os
 import whisper
 
@@ -160,6 +161,28 @@ def embed_query(query: str):
     return result.embeddings[0].values
 
 
+def rerank(result,user_query:str):
+    reranker = CrossEncoder(
+        "BAAI/bge-reranker-v2-m3"
+    )
+    documents = result['documents'][0]
+    pairs = [(user_query,doc) for doc in documents]
+    scores = reranker.predict(pairs)
+
+    ranked_indices = sorted(
+        range(len(scores)),
+        key=lambda i: scores[i],
+        reverse=True
+    )[:10]
+
+    for key in ["ids", "documents", "metadatas", "distances"]:
+        if result.get(key) is not None:
+            result[key][0] = [
+                result[key][0][i] for i in ranked_indices
+            ]
+    return result
+
+
 @tool
 def search(query: str, project_id: str):
     """ "function to search for data related to user's query and return the related data which has the same project id as passed in arguments
@@ -170,6 +193,6 @@ def search(query: str, project_id: str):
         data (List[List[Documents]]): List of documents semantically similar to user's query
     """
     result = embed_query(query)
-    result = collection.query(query_embeddings=result, where={"project_id": project_id})
-    data = result["documents"]
-    return data
+    result = collection.query(query_embeddings=result, where={"project_id": project_id},n_results=50)
+    top_10 = rerank(result,query)
+    return top_10
