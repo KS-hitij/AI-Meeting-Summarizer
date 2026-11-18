@@ -66,6 +66,13 @@ A single-file FastAPI backend with LangGraph agents, Celery async workers, Googl
 1. **Summarization pipeline** (audio → summary → vector store)
    - Client uploads audio/text → `main.py` saves a temp file and queues `summarize_file`.
 
+2. **RAG query pipeline** (question → relevant docs → answer → judge)
+   - Client POSTs a question for a project → `main.py` queues `rag`.
+   - The `rag_agent` LangGraph:
+     - `retrieve_data` — embed the query, search ChromaDB (filtered by `project_id`), cache results in Redis (60 s).
+     - `answer_user_query` — structured LLM answer (`response` + `evidence`).
+     - `judge_llm_answer` — judge verifies accuracy; if false, fall through to `improve_llm_response` and regenerate.
+     - Final answer is the verified/improved response.
 
 ---
 
@@ -168,11 +175,3 @@ To produce a production build, run `uvicorn main:app --factory` without `--reloa
    - A Celery worker runs the LangGraph `summarize_agent`:
      - Audio → `transcribe_node` (Whisper turbo) → `summarize_node` (structured summary) → `store_in_vector_db_node` (embed + store in ChromaDB).
    - The worker deletes the temp file after finishing.
-
-2. **RAG query pipeline** (question → relevant docs → answer → judge)
-   - Client POSTs a question for a project → `main.py` queues `rag`.
-   - The `rag_agent` LangGraph:
-     - `retrieve_data` — embed the query, search ChromaDB (filtered by `project_id`), cache results in Redis (60 s).
-     - `answer_user_query` — structured LLM answer (`response` + `evidence`).
-     - `judge_llm_answer` — judge verifies accuracy; if false, fall through to `improve_llm_response` and regenerate.
-     - Final answer is the verified/improved response.
